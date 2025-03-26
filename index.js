@@ -1,10 +1,11 @@
 // server.js
 const express = require("express");
 const app = express();
-const port = 5000;
+const port = process.env.PORT || 5000;
 const cors = require("cors");
 app.use(express.json());
 app.use(cors());
+const bcrypt = require("bcryptjs");
 require("dotenv").config();
 // db connection
 
@@ -19,16 +20,20 @@ const client = new MongoClient(uri, {
   },
 });
 const quizQuestionCollection = client.db("coursePilot").collection("todayExam");
+const userCollection = client.db("coursePilot").collection("Users");
 
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
+    app.get("/", async (req, res) => {
+      res.send("course pilot is firing");
+    });
     // Tareq's code
 
     app.get("/todayExam", async (req, res) => {
@@ -50,6 +55,37 @@ async function run() {
       const result = await quizQuestionCollection.updateOne(query, {
         $set: { answer: updateOption },
       });
+      res.send(result);
+    });
+    // find a user is exist or no
+    app.get("/users/", async (req, res) => {
+      const { email } = req.query;
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      res.send(result);
+    });
+    // post users on colletion
+    // collect by provider
+
+    app.post("/users", async (req, res) => {
+      const data = req.body;
+      const password = data?.password;
+      if (!data?.image) {
+        data.image =
+          "https://i.ibb.co.com/Kzc49SVR/blue-circle-with-white-user-78370-4707.jpg";
+      }
+      const hashedPassword = await bcrypt.hash(password, 10);
+      data.password = hashedPassword;
+      const timestamp = new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Dhaka",
+      });
+      const updateData = {
+        ...data,
+        role: "user",
+
+        createdAt: timestamp,
+      };
+      const result = await userCollection.insertOne(updateData);
       res.send(result);
     });
   } finally {
