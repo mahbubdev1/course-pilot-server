@@ -10,7 +10,7 @@ const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.m0yzu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -18,6 +18,7 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
+const quizQuestionCollection = client.db("coursePilot").collection("todayExam");
 
 async function run() {
   try {
@@ -64,6 +65,37 @@ async function run() {
 
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
+    // Send a ping to confirm a successful connection
+    await client.db("admin").command({ ping: 1 });
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
+    // Tareq's code
+
+    app.get("/todayExam", async (req, res) => {
+      const result = await quizQuestionCollection.find().toArray();
+      res.send(result);
+    });
+    // post for todayExam route
+    app.post("/todayExam", async (req, res) => {
+      const data = req.body;
+      console.log(data);
+      const result = await quizQuestionCollection.insertOne(data);
+      res.send(result);
+    });
+    // patch for update quiz question
+    app.patch("/updateAnswer/:id", async (req, res) => {
+      const { id } = req.params;
+      const updateOption = req.body.answer;
+      const query = { _id: new ObjectId(id) };
+      const result = await quizQuestionCollection.updateOne(query, {
+        $set: { answer: updateOption },
+      });
+      res.send(result);
+    });
+  } finally {
+    // Ensures that the client will close when you finish/error
+    // await client.close();
   }
 }
 
