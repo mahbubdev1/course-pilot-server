@@ -47,6 +47,7 @@ async function run() {
       const result = await sessionCollection.find().toArray();
       res.send(result);
     });
+
     app.get("/todayExam", async (req, res) => {
       const result = await quizQuestionCollection.find().toArray();
       res.send(result);
