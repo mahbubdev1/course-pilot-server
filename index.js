@@ -22,6 +22,7 @@ const client = new MongoClient(uri, {
 });
 const quizQuestionCollection = client.db("coursePilot").collection("todayExam");
 const userCollection = client.db("coursePilot").collection("Users");
+const sessionCollection = client.db("coursePilot").collection("session");
 
 async function run() {
   try {
@@ -126,6 +127,17 @@ async function run() {
       res.send("course pilot is firing");
     });
     // Tareq's code
+    // for add a live session
+    app.post("/live-sessions", async (req, res) => {
+      const data = req.body;
+      const result = await sessionCollection.insertOne(data);
+      res.send(result);
+    });
+    // get live session
+    app.get("/live-sessions", async (req, res) => {
+      const result = await sessionCollection.find().toArray();
+      res.send(result);
+    });
 
     app.get("/todayExam", async (req, res) => {
       const result = await quizQuestionCollection.find().toArray();
