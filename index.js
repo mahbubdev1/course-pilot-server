@@ -87,13 +87,41 @@ async function run() {
       }
     });
 
-  } catch (error) {
-    console.error("MongoDB Connection Error:", error);
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    app.get("/users/", async (req, res) => {
+      const { email } = req.query;
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      res.send(result);
+    });
+    // post users on colletion
+    // collect by provider
+
+    app.post("/users", async (req, res) => {
+      const data = req.body;
+      const password = data?.password;
+      if (!password) {
+        return res.status(400).json({ message: "Password is required" });
+      }
+
+      if (!data?.image) {
+        data.image =
+          "https://i.ibb.co.com/Kzc49SVR/blue-circle-with-white-user-78370-4707.jpg";
+      }
+      const hashedPassword = await bcrypt.hash(password, 10);
+      data.password = hashedPassword;
+      const timestamp = new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Dhaka",
+      });
+      const updateData = {
+        ...data,
+        role: "user",
+
+        createdAt: timestamp,
+      };
+      const result = await userCollection.insertOne(updateData);
+      res.send(result);
+    });
+
     app.get("/", async (req, res) => {
       res.send("course pilot is firing");
     });
@@ -120,37 +148,17 @@ async function run() {
       });
       res.send(result);
     });
+
+  } catch (error) {
+    console.error("MongoDB Connection Error:", error);
+    // Send a ping to confirm a successful connection
+    await client.db("admin").command({ ping: 1 });
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
+
     // find a user is exist or no
-    app.get("/users/", async (req, res) => {
-      const { email } = req.query;
-      const query = { email: email };
-      const result = await userCollection.findOne(query);
-      res.send(result);
-    });
-    // post users on colletion
-    // collect by provider
 
-    app.post("/users", async (req, res) => {
-      const data = req.body;
-      const password = data?.password;
-      if (!data?.image) {
-        data.image =
-          "https://i.ibb.co.com/Kzc49SVR/blue-circle-with-white-user-78370-4707.jpg";
-      }
-      const hashedPassword = await bcrypt.hash(password, 10);
-      data.password = hashedPassword;
-      const timestamp = new Date().toLocaleString("en-US", {
-        timeZone: "Asia/Dhaka",
-      });
-      const updateData = {
-        ...data,
-        role: "user",
-
-        createdAt: timestamp,
-      };
-      const result = await userCollection.insertOne(updateData);
-      res.send(result);
-    });
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
