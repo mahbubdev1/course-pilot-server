@@ -55,6 +55,18 @@ async function run() {
     });
 
     app.get("/student-courses/:id", async (req, res) => {
+    app.get('/student-course/:email', async (req, res) => {
+      const email = req.params.email;
+      const result = await coursesCollection.find({ email: email }).toArray();
+      res.send(result)
+    });
+    app.get('/student-course', async (req, res) => {
+      // const email = req.params.email;
+      const result = await coursesCollection.find().toArray();
+      res.send(result)
+    });
+
+    app.get('/student-courses/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await coursesCollection.findOne(query);
@@ -62,6 +74,7 @@ async function run() {
     });
 
     app.put("/student-courses/:id", async (req, res) => {
+    app.put('/student-courses/:id', async (req, res) => {
       const updateData = req.body;
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -73,6 +86,13 @@ async function run() {
     });
 
     app.delete("/student-course/:id", async (req, res) => {
+        $set: updateData
+      }
+      const result = await coursesCollection.updateOne(query, filter);
+      res.send(result)
+    });
+
+    app.delete('/student-course/:id', async (req, res) => {
       const id = req.params.id;
 
       if (!ObjectId.isValid(id)) {
@@ -83,6 +103,7 @@ async function run() {
         const query = { _id: new ObjectId(id) };
         const result = await coursesCollection.deleteOne(query);
         res.send(result);
+        res.send(result)
       } catch (error) {
         console.error("Error deleting course:", error);
         res.status(500).send({ error: "Internal Server Error" });
@@ -250,6 +271,7 @@ async function run() {
     );
 
     // find a user is exist or no
+
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
@@ -264,4 +286,5 @@ app.get("/", (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+});
 });
