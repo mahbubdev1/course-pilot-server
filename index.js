@@ -7,7 +7,7 @@ app.use(cors());
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
-
+const { Configuration, OpenAIApi } = require("openai");
 // db connection
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
@@ -29,6 +29,7 @@ const paymentCollection = client.db("coursePilot").collection("payment");
 const store_id = process.env.STORE_ID;
 const store_passwd = process.env.STORE_PASS;
 const is_live = false;
+const helpDeskCollection = client.db("coursePilot").collection("textUpload");
 
 async function run() {
   try {
@@ -60,19 +61,38 @@ async function run() {
     });
 
     app.get("/student-courses/:id", async (req, res) => {
+    app.get('/student-course/:email', async (req, res) => {
+      const email = req.params.email;
+      const result = await coursesCollection.find({ email: email }).toArray();
+      res.send(result);
+    });
+    app.get("/student-course", async (req, res) => {
+      // const email = req.params.email;
+      const result = await coursesCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/student-courses/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await coursesCollection.findOne(query);
       res.send(result);
     });
 
-    app.put("/student-courses/:id", async (req, res) => {
+    app.put('/student-courses/:id', async (req, res) => {
       const updateData = req.body;
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const filter = {
         $set: updateData,
       };
+      const result = await coursesCollection.updateOne(query, filter);
+      res.send(result);
+    });
+
+    app.delete("/student-course/:id", async (req, res) => {
+        $set: updateData
+      }
       const result = await coursesCollection.updateOne(query, filter);
       res.send(result);
     });
@@ -100,6 +120,86 @@ async function run() {
       const result = await userCollection.findOne(query);
       res.send(result);
     });
+
+    // Help desk sirver side code start
+
+    // ✅ Text Upload API (OUTSIDE try-finally)
+    app.post("/Upload", async (req, res) => {
+      const data = req.body;
+      const result = await helpDeskCollection.insertOne(data);
+      res.send(result);
+    });
+
+    app.put("/update/:id", async (req, res) => {
+      const id = req.params.id;
+      const { userId } = req.body;
+
+      try {
+        const post = await helpDeskCollection.findOne({
+          _id: new ObjectId(id),
+          likedBy: userId,
+        });
+
+        if (post) {
+          return res
+            .status(400)
+            .send({ error: "You already liked this post!" });
+        }
+
+        await helpDeskCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $inc: { like: 1 },
+            $push: { likedBy: userId },
+          }
+        );
+
+        const updatedPost = await helpDeskCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        res.send(updatedPost);
+      } catch (error) {
+        res.status(500).send({ error: "Server error!" });
+      }
+    });
+
+    app.get("/postData", async (req, res) => {
+      const result = (await helpDeskCollection.find().toArray()).reverse();
+      res.send(result);
+    });
+
+    //text dlete api
+    app.delete("/postDelete/:id", async (req, res) => {
+      const id = req.params.id;
+      const queary = { _id: new ObjectId(id) };
+      const result = await helpDeskCollection.deleteOne(queary);
+      res.send(result);
+    });
+
+    // Help desk sirver side code end
+
+    //open ai chat bode sirver
+    // const configuration = new Configuration({
+    //   apiKey: process.env.OPENAI_API_KEY,
+    // });
+    // const openai = new OpenAIApi(configuration);
+
+    // app.post("/api/chat", async (req, res) => {
+    //   const { message } = req.body;
+
+    //   try {
+    //     const completion = await openai.createChatCompletion({
+    //       model: "gpt-3.5-turbo", // or "gpt-4"
+    //       messages: [{ role: "user", content: message }],
+    //     });
+
+    //     res.json({ reply: completion.data.choices[0].message.content });
+    //   } catch (error) {
+    //     console.error("OpenAI Error:", error.message);
+    //     res.status(500).json({ error: "OpenAI API error" });
+    //   }
+    // });
+
     // post users on colletion
     // collect by provider
 
@@ -311,4 +411,5 @@ app.get("/", (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+});
 });
