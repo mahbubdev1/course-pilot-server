@@ -41,6 +41,7 @@ async function run() {
     // Database & Collection Reference
     const database = client.db("coursePilot");
     const coursesCollection = database.collection("courses");
+    const notesCollection = database.collection("notes");
 
     // API Route to Add Data
     app.post("/student-course", async (req, res) => {
@@ -79,6 +80,23 @@ async function run() {
       res.send(result);
     });
 
+    app.get('/student-certificate/:email', async (req, res) => {
+      const email = req.params.email;
+      const result = await coursesCollection.find({ email: email, certificateStatus: 'approve' }).toArray();
+      res.send(result)
+    });
+
+    app.patch('/student-courses/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const { certificateStatus } = req.body;
+      const updateDoc = {
+        $set: { certificateStatus }
+      }
+      const result = await coursesCollection.updateOne(filter, updateDoc);
+      res.send(result)
+    });
+
     app.put('/student-courses/:id', async (req, res) => {
       const updateData = req.body;
       const id = req.params.id;
@@ -114,7 +132,46 @@ async function run() {
       }
     });
 
-    app.get("/users/", async (req, res) => {
+    // Notes 
+
+    app.post('/notes', async (req, res) => {
+      const notesData = req.body;
+      const result = await notesCollection.insertOne(notesData);
+      res.send(result)
+    });
+
+    app.get('/notes/:courseTitle/:videoIndex', async (req, res) => {
+      const { courseTitle, videoIndex } = req.params;
+      const result = await notesCollection.find({
+        coursesTitle: courseTitle,
+        videoIndex: parseInt(videoIndex)
+      }).toArray();
+      res.send(result);
+    });
+
+    app.patch('/notes/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedNote = req.body;
+        const result = await notesCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedNote }
+        );
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating note:", error);
+        res.status(500).send({ error: "Failed to update note" });
+      }
+    });
+
+    app.delete('/notes/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await notesCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    app.get("/users", async (req, res) => {
       const { email } = req.query;
       const query = { email: email };
       const result = await userCollection.findOne(query);
