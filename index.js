@@ -3,7 +3,10 @@ const app = express();
 const cors = require("cors");
 const SSLCommerzPayment = require("sslcommerz-lts");
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:3000",
+  credentials: true,
+}));
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
@@ -61,7 +64,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/student-courses/:id", async (req, res) => {
+    // app.get("/student-courses/:id", async (req, res) => {
     app.get('/student-course/:email', async (req, res) => {
       const email = req.params.email;
       const result = await coursesCollection.find({ email: email }).toArray();
@@ -108,12 +111,12 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/student-course/:id", async (req, res) => {
-        $set: updateData
-      }
-      const result = await coursesCollection.updateOne(query, filter);
-      res.send(result);
-    });
+    // app.delete("/student-course/:id", async (req, res) => {
+    //     $set: updateData
+      
+    //   const result = await coursesCollection.updateOne(query, filter);
+    //   res.send(result);
+    // });
 
     app.delete("/student-course/:id", async (req, res) => {
       const id = req.params.id;
@@ -469,4 +472,4 @@ app.get("/", (req, res) => {
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
-});
+// });
