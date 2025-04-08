@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const SSLCommerzPayment = require("sslcommerz-lts");
 app.use(express.json());
 app.use(cors());
 const bcrypt = require("bcryptjs");
@@ -23,6 +24,11 @@ const client = new MongoClient(uri, {
 const quizQuestionCollection = client.db("coursePilot").collection("todayExam");
 const userCollection = client.db("coursePilot").collection("Users");
 const sessionCollection = client.db("coursePilot").collection("session");
+const paymentCollection = client.db("coursePilot").collection("payment");
+
+const store_id = process.env.STORE_ID;
+const store_passwd = process.env.STORE_PASS;
+const is_live = false;
 const helpDeskCollection = client.db("coursePilot").collection("textUpload");
 
 async function run() {
@@ -58,22 +64,21 @@ async function run() {
     app.get('/student-course/:email', async (req, res) => {
       const email = req.params.email;
       const result = await coursesCollection.find({ email: email }).toArray();
-      res.send(result)
+      res.send(result);
     });
-    app.get('/student-course', async (req, res) => {
+    app.get("/student-course", async (req, res) => {
       // const email = req.params.email;
       const result = await coursesCollection.find().toArray();
-      res.send(result)
+      res.send(result);
     });
 
-    app.get('/student-courses/:id', async (req, res) => {
+    app.get("/student-courses/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await coursesCollection.findOne(query);
       res.send(result);
     });
 
-    app.put("/student-courses/:id", async (req, res) => {
     app.put('/student-courses/:id', async (req, res) => {
       const updateData = req.body;
       const id = req.params.id;
@@ -89,10 +94,10 @@ async function run() {
         $set: updateData
       }
       const result = await coursesCollection.updateOne(query, filter);
-      res.send(result)
+      res.send(result);
     });
 
-    app.delete('/student-course/:id', async (req, res) => {
+    app.delete("/student-course/:id", async (req, res) => {
       const id = req.params.id;
 
       if (!ObjectId.isValid(id)) {
@@ -103,7 +108,6 @@ async function run() {
         const query = { _id: new ObjectId(id) };
         const result = await coursesCollection.deleteOne(query);
         res.send(result);
-        res.send(result)
       } catch (error) {
         console.error("Error deleting course:", error);
         res.status(500).send({ error: "Internal Server Error" });
@@ -262,6 +266,128 @@ async function run() {
       });
       res.send(result);
     });
+
+    // =========== Payment gateway ===========
+    app.post("/payment", async (req, res) => {
+      // console.log(req.body);
+      const tran_id = new ObjectId().toString();
+      const { courseId, price, name, address, post, phone, currency } =
+        req.body;
+
+      const data = {
+        total_amount: price,
+        currency: currency,
+        tran_id: tran_id, // use unique tran_id for each API call
+        success_url: `http://localhost:5000/payment/success/${tran_id}`,
+        fail_url: "http://localhost:3030/fail",
+        cancel_url: "http://localhost:3030/cancel",
+        ipn_url: "http://localhost:3030/ipn",
+        shipping_method: "Courier",
+        product_name: "Computer.",
+        product_category: "Electronic",
+        product_profile: "general",
+        cus_name: "Customer Name",
+        cus_email: "customer@example.com",
+        cus_add1: address,
+        cus_add2: address,
+        cus_city: "Dhaka",
+        cus_state: "Dhaka",
+        cus_postcode: "1000",
+        cus_country: "Bangladesh",
+        cus_phone: phone,
+        cus_fax: phone,
+        ship_name: name,
+        ship_add1: "Dhaka",
+        ship_add2: "Dhaka",
+        ship_city: "Dhaka",
+        ship_state: "Dhaka",
+        ship_postcode: post,
+        ship_country: "Bangladesh",
+      };
+
+      const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+
+      sslcz.init(data).then(async (apiResponse) => {
+        // Save payment data in MongoDB
+        const paymentData = {
+          tran_id: tran_id,
+          courseId: courseId,
+          price: price,
+          name: name,
+          address: address,
+          post: post,
+          phone: phone,
+          currency: currency,
+          status: "Pending",
+        };
+
+        // Insert payment data into MongoDB
+        await paymentCollection.insertOne(paymentData);
+
+        // Redirect the user to payment gateway
+        let GatewayPageURL = apiResponse.GatewayPageURL;
+        res.send({ url: GatewayPageURL });
+        // console.log("Redirecting to: ", GatewayPageURL);
+      });
+
+      app.post("/payment/success/:id", async (req, res) => {
+        const tran_id = req.params.id;
+
+        try {
+          // Find the payment in MongoDB
+          const payment = await paymentCollection.findOne({ tran_id: tran_id });
+
+          if (!payment) {
+            return res.status(404).send("Payment not found");
+          }
+
+          // Update the payment status to 'Success'
+          const result = await paymentCollection.updateOne(
+            { tran_id: tran_id },
+            { $set: { status: "Success" } }
+          );
+
+          if (result.modifiedCount > 0) {
+            // Redirect to the success page with the transaction ID
+            res.redirect(`http://localhost:3000/payment-success/${tran_id}`);
+          } else {
+            res.status(400).send("Failed to update payment status");
+          }
+        } catch (error) {
+          console.error("Error processing payment:", error);
+          res.status(500).send("Internal Server Error");
+        }
+      });
+
+      app.post("/payment/fail/:id", async (req, res) => {
+        const tran_id = req.params.id;
+
+        try {
+          // Find the payment in MongoDB
+          const payment = await paymentCollection.findOne({ tran_id: tran_id });
+
+          if (!payment) {
+            return res.status(404).send("Payment not found");
+          }
+
+          // Update the payment status to 'Failed'
+          const result = await paymentCollection.updateOne(
+            { tran_id: tran_id },
+            { $set: { status: "Failed" } }
+          );
+
+          if (result.modifiedCount > 0) {
+            // Redirect to the fail page with the transaction ID
+            res.redirect(`http://localhost:3000/payment-fail/${tran_id}`);
+          } else {
+            res.status(400).send("Failed to update payment status");
+          }
+        } catch (error) {
+          console.error("Error processing payment failure:", error);
+          res.status(500).send("Internal Server Error");
+        }
+      });
+    });
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
     // Send a ping to confirm a successful connection
@@ -271,7 +397,6 @@ async function run() {
     );
 
     // find a user is exist or no
-
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
