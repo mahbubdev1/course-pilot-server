@@ -1,19 +1,29 @@
+// server.js
 const express = require("express");
 const app = express();
+const http = require("http"); // needed for Socket.IO
+const { Server } = require("socket.io");
+const server = http.createServer(app); // Socket.IO server
+const port = process.env.PORT || 5000;
 const cors = require("cors");
-const SSLCommerzPayment = require("sslcommerz-lts");
-app.use(express.json());
-app.use(cors({
-  origin: "http://localhost:3000",
-  credentials: true,
-}));
+// app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // or higher if needed
+
+app.use(cors());
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
+const SSLCommerzPayment = require("sslcommerz-lts");
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 const port = process.env.PORT || 5000;
 const { Configuration, OpenAIApi } = require("openai");
 // db connection
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.m0yzu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 // const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.7utxc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -27,6 +37,14 @@ const client = new MongoClient(uri, {
 const quizQuestionCollection = client.db("coursePilot").collection("todayExam");
 const userCollection = client.db("coursePilot").collection("Users");
 const sessionCollection = client.db("coursePilot").collection("session");
+const messageDataCollection = client.db("coursePilot").collection("messages");
+const io = new Server(server, {
+  cors: {
+    origin: process.env.SOCKET_FRONTEND, // or specify your frontend origin
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
 const paymentCollection = client.db("coursePilot").collection("payment");
 
 const store_id = process.env.STORE_ID;
@@ -34,10 +52,35 @@ const store_passwd = process.env.STORE_PASS;
 const is_live = false;
 const helpDeskCollection = client.db("coursePilot").collection("textUpload");
 
+let onlineUsers = [];
+io.on("connection", (socket) => {
+  console.log("Client connected:", socket.id);
+
+  socket.on("join", ({ email }) => {
+    console.log("User joined:", email);
+    if (!onlineUsers.includes(email)) {
+      onlineUsers.push(email);
+    }
+
+    io.emit("onlineUsers", onlineUsers);
+    socket.email = email;
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.email);
+    onlineUsers = onlineUsers.filter((user) => user !== socket.email);
+    io.emit("onlineUsers", onlineUsers);
+  });
+});
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
+    // Send a ping to confirm a successful connection
+    await client.db("admin").command({ ping: 1 });
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
     await client.connect();
     console.log("Connected to MongoDB!");
 
@@ -45,6 +88,7 @@ async function run() {
     const database = client.db("coursePilot");
     const coursesCollection = database.collection("courses");
     const notesCollection = database.collection("notes");
+    const noteCollection = database.collection("note");
 
     // API Route to Add Data
     app.post("/student-course", async (req, res) => {
@@ -65,7 +109,7 @@ async function run() {
     });
 
     // app.get("/student-courses/:id", async (req, res) => {
-    app.get('/student-course/:email', async (req, res) => {
+    app.get("/student-course/:email", async (req, res) => {
       const email = req.params.email;
       const result = await coursesCollection.find({ email: email }).toArray();
       res.send(result);
@@ -83,24 +127,26 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/student-certificate/:email', async (req, res) => {
+    app.get("/student-certificate/:email", async (req, res) => {
       const email = req.params.email;
-      const result = await coursesCollection.find({ email: email, certificateStatus: 'approve' }).toArray();
-      res.send(result)
+      const result = await coursesCollection
+        .find({ email: email, certificateStatus: "approve" })
+        .toArray();
+      res.send(result);
     });
 
-    app.patch('/student-courses/:id', async (req, res) => {
+    app.patch("/student-courses/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const { certificateStatus, status } = req.body;
       const updateDoc = {
         $set: { certificateStatus, status }
-      }
+      };
       const result = await coursesCollection.updateOne(filter, updateDoc);
-      res.send(result)
+      res.send(result);
     });
 
-    app.put('/student-courses/:id', async (req, res) => {
+    app.put("/student-courses/:id", async (req, res) => {
       const updateData = req.body;
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -135,24 +181,26 @@ async function run() {
       }
     });
 
-    // Notes 
+    // Notes
 
-    app.post('/notes', async (req, res) => {
+    app.post("/notes", async (req, res) => {
       const notesData = req.body;
       const result = await notesCollection.insertOne(notesData);
-      res.send(result)
-    });
-
-    app.get('/notes/:courseTitle/:videoIndex', async (req, res) => {
-      const { courseTitle, videoIndex } = req.params;
-      const result = await notesCollection.find({
-        coursesTitle: courseTitle,
-        videoIndex: parseInt(videoIndex)
-      }).toArray();
       res.send(result);
     });
 
-    app.patch('/notes/:id', async (req, res) => {
+    app.get("/notes/:courseTitle/:videoIndex", async (req, res) => {
+      const { courseTitle, videoIndex } = req.params;
+      const result = await notesCollection
+        .find({
+          coursesTitle: courseTitle,
+          videoIndex: parseInt(videoIndex),
+        })
+        .toArray();
+      res.send(result);
+    });
+
+    app.patch("/notes/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const updatedNote = req.body;
@@ -167,7 +215,7 @@ async function run() {
       }
     });
 
-    app.delete('/notes/:id', async (req, res) => {
+    app.delete("/notes/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await notesCollection.deleteOne(query);
@@ -355,7 +403,6 @@ async function run() {
     // post for todayExam route
     app.post("/todayExam", async (req, res) => {
       const data = req.body;
-      console.log(data);
       const result = await quizQuestionCollection.insertOne(data);
       res.send(result);
     });
@@ -369,6 +416,14 @@ async function run() {
       });
       res.send(result);
     });
+    // find all users
+    app.get("/users", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
+    // find a user
+    app.get("/users/:email", async (req, res) => {
+      const { email } = req.params;}
 
     // =========== Payment gateway ===========
     app.post("/payment", async (req, res) => {
@@ -496,6 +551,156 @@ async function run() {
       const result = await paymentCollection.find().toArray();
       res.send(result)
     })
+
+    // API route to handle POST note
+    app.post("/note", async (req, res) => {
+      const noteData = req.body;
+      const result = await noteCollection.insertOne(noteData);
+      res.send(result);
+    });
+
+    // Search notes by title
+    app.get("/search-notes", async (req, res) => {
+      const { title } = req.query;
+      const query = title ? { title: { $regex: title, $options: "i" } } : {};
+      const result = await noteCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // get all note posted by a specific user
+    app.get("/note-users/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await noteCollection.find(query).toArray();
+      res.send(result);
+    });
+    // update the photo
+    app.put("/updatePhoto/:email", async (req, res) => {
+      const { email } = req.params;
+      const image = req.body.image;
+      // console.log(image);
+      const query = { email: email };
+      const result = await userCollection.updateOne(query, {
+        $set: { image: image },
+      });
+      // console.log(result, "87");
+      res.send(result);
+    });
+    // post users on colletion
+    // collect by provider
+
+    app.post("/users", async (req, res) => {
+      const data = req.body;
+      // console.log(data, "97");
+      const query = data.email;
+      // console.log(query);
+
+      const existingUser = await userCollection.findOne({ email: query });
+      // console.log("Existing user:", existingUser);
+      if (existingUser) {
+        return;
+      }
+
+      const password = data?.password;
+
+      if (!data?.image) {
+        data.image =
+          "https://i.ibb.co.com/Kzc49SVR/blue-circle-with-white-user-78370-4707.jpg";
+      }
+      if (password) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        data.password = hashedPassword;
+      }
+      const timestamp = new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Dhaka",
+      });
+      const updateData = {
+        ...data,
+        role: "user",
+
+        createdAt: timestamp,
+      };
+      const result = await userCollection.insertOne(updateData);
+      console.log(result, "111");
+      res.send(result);
+    });
+
+    // route for chatapp
+    app.post("/messages/send/:id", async (req, res) => {
+      const { id } = req.params;
+      const messageData = req.body;
+      console.log(messageData, "123");
+      const senderEmail = messageData?.sender;
+      const query = { email: senderEmail };
+      const result1 = await userCollection.findOne(query);
+      const senderId = result1?._id.toString();
+
+      const receiverId = id;
+
+      const finalData = {
+        ...messageData,
+        senderId: senderId,
+        receiverId: receiverId,
+      };
+      // console.log(finalData, "130");
+      const result = await messageDataCollection.insertOne(finalData);
+      res.send(result);
+    });
+    app.get("/messages/:id", async (req, res) => {
+      const { id } = req.params;
+      const query = { senderId: id };
+      const result = await messageDataCollection.find().toArray();
+      res.send(result);
+      console.log(result, "145");
+    });
+
+    // for chatbot
+
+    // Update a note in db
+    app.put("/note-update/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        // First validate the ID
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ error: "Invalid ID format" });
+        }
+
+        const updatedNote = req.body;
+        const query = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: {
+            ...updatedNote,
+          },
+        };
+
+        const result = await noteCollection.updateOne(query, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: "Note not found" });
+        }
+
+        res.send(result);
+      } catch (err) {
+        console.error("Error updating note:", err);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    // Cancel/delete a note
+    app.delete("/note-delete/:id", async (req, res) => {
+      const id = req.params.id;
+
+      // Ensure the id is valid
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({ error: "Invalid ObjectId format" });
+      }
+
+      // Convert to ObjectId and perform the delete
+      const query = { _id: new ObjectId(id) };
+      const result = await noteCollection.deleteOne(query);
+      res.send(result);
+    });
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
     // Send a ping to confirm a successful connection
@@ -510,14 +715,9 @@ async function run() {
     // await client.close();
   }
 }
+run().catch(console.dir);
 
-run();
-
-app.get("/", (req, res) => {
-  res.send("Course Pilot Server Is Running");
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+server.listen(port, () => {
+  console.log(`Server running on port  ${port}`);
 });
 // });
