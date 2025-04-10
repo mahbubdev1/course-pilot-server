@@ -92,9 +92,9 @@ async function run() {
     app.patch('/student-courses/:id', async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
-      const { certificateStatus } = req.body;
+      const { certificateStatus, status } = req.body;
       const updateDoc = {
-        $set: { certificateStatus }
+        $set: { certificateStatus, status }
       }
       const result = await coursesCollection.updateOne(filter, updateDoc);
       res.send(result)
@@ -113,7 +113,7 @@ async function run() {
 
     // app.delete("/student-course/:id", async (req, res) => {
     //     $set: updateData
-      
+
     //   const result = await coursesCollection.updateOne(query, filter);
     //   res.send(result);
     // });
@@ -180,6 +180,49 @@ async function run() {
       const result = await userCollection.findOne(query);
       res.send(result);
     });
+
+    app.get("/users/role/:email", async (req, res) => {
+      const { email } = req.params;
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      if (result) {
+        res.send({ role: result.role });
+      } else {
+        res.send({ role: null });
+      }
+    });
+
+
+    app.get("/manageUsers", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.patch('/manageUsers/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const { role } = req.body;
+      const updateDoc = {
+        $set: { role }
+      };
+      const result = await userCollection.updateOne(query, updateDoc);
+      res.send(result)
+    })
+
+    app.delete("/manageUsers/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await userCollection.deleteOne(query);
+      res.send(result)
+    });
+
+    // payment history
+
+    // app.post('/payment-history', async (req, res) => {
+    //   const paymentData = req.data;
+    //   const result = await paymentCollection.insertOne(paymentData);
+    //   res.send(result)
+    // });
 
     // Help desk sirver side code start
 
@@ -329,9 +372,9 @@ async function run() {
 
     // =========== Payment gateway ===========
     app.post("/payment", async (req, res) => {
-      // console.log(req.body);
+      console.log(req.body);
       const tran_id = new ObjectId().toString();
-      const { courseId, price, name, address, post, phone, currency } =
+      const { courseId, price, name, address, post, phone, currency, email } =
         req.body;
 
       const data = {
@@ -370,6 +413,7 @@ async function run() {
       sslcz.init(data).then(async (apiResponse) => {
         // Save payment data in MongoDB
         const paymentData = {
+          email: email,
           tran_id: tran_id,
           courseId: courseId,
           price: price,
@@ -448,6 +492,10 @@ async function run() {
         }
       });
     });
+    app.get('/payments', async (req, res) => {
+      const result = await paymentCollection.find().toArray();
+      res.send(result)
+    })
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
     // Send a ping to confirm a successful connection
