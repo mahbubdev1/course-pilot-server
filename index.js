@@ -3,10 +3,12 @@ const app = express();
 const cors = require("cors");
 const SSLCommerzPayment = require("sslcommerz-lts");
 app.use(express.json());
-app.use(cors({
-  origin: "http://localhost:3000",
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
@@ -45,6 +47,7 @@ async function run() {
     const database = client.db("coursePilot");
     const coursesCollection = database.collection("courses");
     const notesCollection = database.collection("notes");
+    const noteCollection = database.collection("note");
 
     // API Route to Add Data
     app.post("/student-course", async (req, res) => {
@@ -65,7 +68,7 @@ async function run() {
     });
 
     // app.get("/student-courses/:id", async (req, res) => {
-    app.get('/student-course/:email', async (req, res) => {
+    app.get("/student-course/:email", async (req, res) => {
       const email = req.params.email;
       const result = await coursesCollection.find({ email: email }).toArray();
       res.send(result);
@@ -83,24 +86,26 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/student-certificate/:email', async (req, res) => {
+    app.get("/student-certificate/:email", async (req, res) => {
       const email = req.params.email;
-      const result = await coursesCollection.find({ email: email, certificateStatus: 'approve' }).toArray();
-      res.send(result)
+      const result = await coursesCollection
+        .find({ email: email, certificateStatus: "approve" })
+        .toArray();
+      res.send(result);
     });
 
-    app.patch('/student-courses/:id', async (req, res) => {
+    app.patch("/student-courses/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const { certificateStatus } = req.body;
       const updateDoc = {
-        $set: { certificateStatus }
-      }
+        $set: { certificateStatus },
+      };
       const result = await coursesCollection.updateOne(filter, updateDoc);
-      res.send(result)
+      res.send(result);
     });
 
-    app.put('/student-courses/:id', async (req, res) => {
+    app.put("/student-courses/:id", async (req, res) => {
       const updateData = req.body;
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -113,7 +118,7 @@ async function run() {
 
     // app.delete("/student-course/:id", async (req, res) => {
     //     $set: updateData
-      
+
     //   const result = await coursesCollection.updateOne(query, filter);
     //   res.send(result);
     // });
@@ -135,24 +140,26 @@ async function run() {
       }
     });
 
-    // Notes 
+    // Notes
 
-    app.post('/notes', async (req, res) => {
+    app.post("/notes", async (req, res) => {
       const notesData = req.body;
       const result = await notesCollection.insertOne(notesData);
-      res.send(result)
-    });
-
-    app.get('/notes/:courseTitle/:videoIndex', async (req, res) => {
-      const { courseTitle, videoIndex } = req.params;
-      const result = await notesCollection.find({
-        coursesTitle: courseTitle,
-        videoIndex: parseInt(videoIndex)
-      }).toArray();
       res.send(result);
     });
 
-    app.patch('/notes/:id', async (req, res) => {
+    app.get("/notes/:courseTitle/:videoIndex", async (req, res) => {
+      const { courseTitle, videoIndex } = req.params;
+      const result = await notesCollection
+        .find({
+          coursesTitle: courseTitle,
+          videoIndex: parseInt(videoIndex),
+        })
+        .toArray();
+      res.send(result);
+    });
+
+    app.patch("/notes/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const updatedNote = req.body;
@@ -167,7 +174,7 @@ async function run() {
       }
     });
 
-    app.delete('/notes/:id', async (req, res) => {
+    app.delete("/notes/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await notesCollection.deleteOne(query);
@@ -447,6 +454,75 @@ async function run() {
           res.status(500).send("Internal Server Error");
         }
       });
+    });
+
+    // API route to handle POST note
+    app.post("/note", async (req, res) => {
+      const noteData = req.body;
+      const result = await noteCollection.insertOne(noteData);
+      res.send(result);
+    });
+
+    // Search notes by title
+    app.get("/search-notes", async (req, res) => {
+      const { title } = req.query;
+      const query = title ? { title: { $regex: title, $options: "i" } } : {};
+      const result = await noteCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // get all note posted by a specific user
+    app.get("/note-users/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await noteCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // Update a note in db
+    app.put("/note-update/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        // First validate the ID
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ error: "Invalid ID format" });
+        }
+
+        const updatedNote = req.body;
+        const query = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: {
+            ...updatedNote,
+          },
+        };
+
+        const result = await noteCollection.updateOne(query, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: "Note not found" });
+        }
+
+        res.send(result);
+      } catch (err) {
+        console.error("Error updating note:", err);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    // Cancel/delete a note
+    app.delete("/note-delete/:id", async (req, res) => {
+      const id = req.params.id;
+
+      // Ensure the id is valid
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({ error: "Invalid ObjectId format" });
+      }
+
+      // Convert to ObjectId and perform the delete
+      const query = { _id: new ObjectId(id) };
+      const result = await noteCollection.deleteOne(query);
+      res.send(result);
     });
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
